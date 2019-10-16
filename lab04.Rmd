@@ -60,7 +60,8 @@ crossval_val_fold_inds <- caret::createFolds(
 Your goal is to understand the data well enough that you can identify two features (two of the measured attributes) that would be useful for classifying glass in part 2.  Ideally, each feature you choose will individually have something to say about glass type (for example, maybe the distribution of values for the feature is different for the different glass types), and there will not be a strong relationship between the two features you choose (so they carry different information about glass type and you don't just have basically the same information from your two features).  Don't spend a huge amount of time on this though.  A pairs plot could be good enough.
 
 ```{r}
-
+vars <- c('RI', "Na", "Mg", "Al", "Si","K","Ca", "Ba", "Fe", "type")
+ggpairs(glass%>%select(vars) )
 ```
 
 I will use Na and Al.
@@ -71,21 +72,24 @@ To save you some time retyping all my code from the handout, I'm pasting in the 
 
 ```{r}
 # "train" the KNN model
+train_and_plot_knn <- function(neighbour){
+  
+
 knn_fit <- train(
-  form = party ~ age + popul,
-  data = train_nes96,
+  form = type ~ Na + Al,
+  data = train_glass,
   method = "knn",
   preProcess = "scale",
   trControl = trainControl(method = "none"),
-  tuneGrid = data.frame(k = 5)
+  tuneGrid = data.frame(k = neighbour)
 )
 
 # a grid of values for age and popul at which to get the estimated class.
 # it's not a test data set in the sense that we don't have observations of party to go with these points,
 # but we will treat it as a "test set" in the sense that we will obtain predictions at these points
 test_grid <- expand.grid(
-  age = seq(from = 19, to = 91, length = 201),
-  popul = seq(from = 19, to = 7300, length = 201)
+  Na = seq(from = 11, to = 17, length = 201),
+  Al = seq(from = 0, to = 4, length = 201)
 )
 head(test_grid)
 
@@ -101,11 +105,22 @@ background_knn <- test_grid %>%
 # make the plot.  geom_raster does the shading in the background, alpha = 0.2 makes it transparent
 ggplot() +
   geom_raster(data = background_knn,
-    mapping = aes(x = age, y = popul, fill = est_party), alpha = 0.2) +
-  geom_point(data = train_nes96, mapping = aes(x = age, y = popul, color = party)) +
-  scale_color_manual("party", values = c("orange", "cornflowerblue", "mediumblue")) +
-  scale_fill_manual(values = c("orange", "cornflowerblue", "mediumblue")) +
-  ggtitle("KNN, k = 5")
+    mapping = aes(x = Na, y = Al, fill = est_party), alpha = 0.2) +
+  geom_point(data = train_glass, mapping = aes(x = Na, y = Al, color = type)) +
+  scale_color_manual("type", values = c("orange", "cornflowerblue", "mediumblue","cyan", "pink", "red")) +
+  scale_fill_manual(values = c("orange", "cornflowerblue", "mediumblue","cyan", "pink", "red")) +
+  ggtitle("KNN, k = " ,neighbour)
+}
+```
+
+```{r}
+train_and_plot_knn(5)
+
+train_and_plot_knn(10)
+
+train_and_plot_knn(15)
+train_and_plot_knn(50)
+train_and_plot_knn(100)
 ```
 
 #### 3. Use cross-validation to evaluate the classification performance of a KNN classifier using all 9 features for a few values of k.
@@ -123,11 +138,48 @@ Your code should do the following things:
 You will need to do this for each value of $k$ you investigate.  For today, you can organize this in any way that makes sense to you.  Options include using two nested for loops where one iterates over the values of $k$ you're looking at and the other iterates over cross-validation folds; manually doing steps b, c, and d for each model within a single for loop; or repeating your whole block of code multiple times, once for each value of $k$.
 
 ```{r}
+calculate_val_mse <- function(neighbour){
+val_mse <- rep(NA, 10)
 
+for(i in seq_len(10)) {
+  train <- train_glass %>% slice(-crossval_val_fold_inds[[i]])
+  val <- train_glass %>% slice(crossval_val_fold_inds[[i]])
+  knn_fit <- train(
+  form = type ~ RI + Na + Mg + Al + Si + K + Ca + Ba + Fe,
+  data = train,
+  method = "knn",
+  preProcess = "scale",
+  trControl = trainControl(method = "none"),
+  tuneGrid = data.frame(k = neighbour)
+)
+  y_hats <- predict(knn_fit, newdata = val, type = "raw")
+  val_mse[i] <- mean(y_hats != val$type)
+}
+mean(val_mse)
+}
+
+calculate_val_mse(5)
+calculate_val_mse(10)
+calculate_val_mse(15)
+calculate_val_mse(50)
+calculate_val_mse(100)
 ```
 
 #### 4. Using your selected value of $k$ from cross-validation, refit your KNN model to the full training set and get the test set error rate.  How does your performance compare to what you'd get if you just predicted the most common class in the training set?
 
-```{r}
+Worse than predicting the most common class. 
 
+```{r}
+knn_fit <- train(
+  form = type ~ RI + Na + Mg + Al + Si + K + Ca + Ba + Fe,
+  data = train_glass,
+  method = "knn",
+  preProcess = "scale",
+  trControl = trainControl(method = "none"),
+  tuneGrid = data.frame(k = 10)
+)
+y_hats <- predict(knn_fit, newdata = test_glass, type = "raw")
+mean(y_hats != test_glass$type)
+mean("WinNF" != test_glass$type)
+  
 ```
